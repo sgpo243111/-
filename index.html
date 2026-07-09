@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>제주 청년 지원금 추천 시스템</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/stlite.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/stlite.js"></script>
+    <script>
+      // 우리가 만든 파이썬 코드를 텍스트로 그대로 매립합니다.
+      const streamlitCode = `
+import streamlit as st
+import pandas as pd
+import re
+
+st.set_page_config(page_title="제주 청년 지원금 추천", layout="wide")
+st.title("🎯 제주 청년 지원금 추천 시스템")
+st.markdown("당신에게 맞는 지원금을 찾아보세요!")
+st.markdown("---")
+
+@st.cache_data
+def load_data():
+    try:
+        df = pd.read_excel('청년지원금.xlsx')
+        return df
+    except Exception as e:
+        st.error(f"엑셀 파일을 읽지 못했습니다. 파일 이름을 확인해주세요: {e}")
+        return None
+
+df = load_data()
+if df is None: st.stop()
+
+def is_age_eligible(age_input, age_cell):
+    age_str = str(age_cell).strip()
+    if age_str in ['제한 없음', '무관', 'nan', '상관없음']: return True
+    if '이상' in age_str:
+        match = re.search(r'\\d+', age_str)
+        if match: return age_input >= int(match.group())
+    if '이하' in age_str:
+        match = re.search(r'\\d+', age_str)
+        if match: return age_input <= int(match.group())
+    numbers = [int(s) for s in re.findall(r'\\d+', age_str)]
+    if len(numbers) == 2: return numbers[0] <= age_input <= numbers[1]
+    return str(age_input) in age_str
+
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("📋 당신의 정보를 입력하세요")
+    age = st.number_input("👤 나이", min_value=15, max_value=69, value=25, step=1)
+    location = st.selectbox("📍 거주 지역", ["상관없음", "제주시", "서귀포시"])
+    marriage = st.selectbox("💍 결혼 상태", ["상관없음", "미혼", "신혼부부"])
+    job_status = st.selectbox("🏢 현재 직업/상태", ["상관없음", "미취업자", "재직자", "창업자", "영농종사자"])
+
+with col2:
+    st.subheader("✅ 추천 결과")
+    search_button = st.button("🔍 나에게 맞는 지원금 찾기", use_container_width=True, type="primary")
+    st.markdown("---")
+    
+    if search_button:
+        result = df.copy()
+        result = result[result.apply(lambda row: is_age_eligible(age, row['나이']), axis=1)]
+        if location != "상관없음":
+            result = result[(result['지역'].isin(['제한 없음', '무관', '상관없음'])) | (result['지역'].str.contains(location, na=False))]
+        if marriage != "상관없음":
+            result = result[(result['결혼'].isin(['제한 없음', '무관', '상관없음'])) | (result['결혼'].str.contains(marriage, na=False))]
+        if job_status != "상관없음":
+            result = result[(result['근로(직업)'].isin(['제한 없음', '무관', '상관없음'])) | (result['근로(직업)'].str.contains(job_status, na=False))]
+        
+        if len(result) > 0:
+            st.success(f"✅ {len(result)}개의 지원금을 찾았습니다!")
+            name_col = '정책명' if '정책명' in df.columns else 'S'
+            for idx, row in result.iterrows():
+                with st.expander(f"📌 {row[name_col]} ({row['분야']})"):
+                    st.write(f"**나이:** {row['나이']} | **지역:** {row['지역']} | **결혼:** {row['결혼']}")
+                    st.write(f"**직업:** {row['근로(직업)']} | **소득:** {row['소득']}")
+                    st.markdown("---")
+                    st.info(row['정책 내용'])
+        else:
+            st.warning("❌ 조건에 맞는 지원금이 없습니다.")
+`;
+
+      // 데이터를 주입하여 브라우저에서 가상으로 스트림릿을 구동합니다.
+      stlite.mount({
+        requirements: ["pandas", "openpyxl"],
+        entrypoint: "app.py",
+        files: {
+          "app.py": streamlitCode,
+          "청년지원금.xlsx": {
+            url: "./청년지원금.xlsx" // 같은 폴더에 있는 엑셀을 상대경로로 참조하게 만듭니다.
+          }
+        }
+      }, document.getElementById("root"));
+    </script>
+  </body>
+</html>
